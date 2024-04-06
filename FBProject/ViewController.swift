@@ -7,7 +7,7 @@
 
 import UIKit
 import Firebase
-import FirebaseDatabaseInternal
+import FirebaseFirestore
 
 class ViewController: UIViewController {
 
@@ -16,78 +16,99 @@ class ViewController: UIViewController {
     @IBOutlet weak var petWeight: UITextField!
     @IBOutlet weak var resultLabel: UILabel!
     
-    var ref: DatabaseReference!
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        ref = Database.database().reference()
-        // Do any additional setup after loading the view.
-    }
+    var db: Firestore!
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            db = Firestore.firestore()
+        }
     
 
     @IBAction func addPet(_ sender: Any) {
         guard let name = petName.text,
-              let age = Int(petAge.text ?? ""),
-              let weight = Double(petWeight.text ?? "") else {
+              let ageText = petAge.text,
+              let age = Int(ageText),
+              let weightText = petWeight.text,
+              let weight = Double(weightText) else {
             return
         }
-        let pet = ["name": name, "age": age, "weight": weight] as [String : Any]
-        ref.child("pets").childByAutoId().setValue(pet)
+
+        let petData: [String: Any] = [
+            "name": name,
+            "age": age,
+            "weight": weight
+        ]
+
+        db.collection("pets").addDocument(data: petData) { error in
+            if let error = error {
+                print("Error adding document: \(error)")
+            } else {
+                print("Document added successfully!")
+            }
+        }
     }
     
     
     @IBAction func delPet(_ sender: Any) {
         guard let name = petName.text else {
-                return
-            }
-        ref.child("pets").observeSingleEvent(of: .value, with: { snapshot in
-            for case let childSnapshot as DataSnapshot in snapshot.children {
-                if let petDict = childSnapshot.value as? [String: Any],
-                   let petName = petDict["name"] as? String,
-                   petName == name {
-                    childSnapshot.ref.removeValue()
+            return
+        }
+
+        db.collection("pets").whereField("name", isEqualTo: name).getDocuments { snapshot, error in
+            if let error = error {
+                print("Error getting documents: \(error)")
+            } else {
+                for document in snapshot!.documents {
+                    document.reference.delete()
                 }
             }
-        })
+        }
     }
     
     
     @IBAction func editPet(_ sender: Any) {
         guard let name = petName.text else {
-                return
-            }
-        ref.child("pets").observeSingleEvent(of: .value, with: { snapshot in
-            for case let childSnapshot as DataSnapshot in snapshot.children {
-                if let petDict = childSnapshot.value as? [String: Any],
-                   let petName = petDict["name"] as? String,
-                   petName == name {
+            return
+        }
+
+        db.collection("pets").whereField("name", isEqualTo: name).getDocuments { snapshot, error in
+            if let error = error {
+                print("Error getting documents: \(error)")
+            } else {
+                for document in snapshot!.documents {
+                    var petData = document.data()
                     if let ageText = self.petAge.text,
                        let age = Int(ageText) {
-                        childSnapshot.ref.child("age").setValue(age)
+                        petData["age"] = age
                     }
                     if let weightText = self.petWeight.text,
                        let weight = Double(weightText) {
-                        childSnapshot.ref.child("weight").setValue(weight)
+                        petData["weight"] = weight
                     }
+                    document.reference.setData(petData)
                 }
             }
-        })
+        }
     }
     
     
     @IBAction func fetchPet(_ sender: Any) {
-        ref.child("pets").observeSingleEvent(of: .value, with: {snapshot in
-        var resultText = ""
-            for case let childSnapshot as DataSnapshot in snapshot.children {
-                if let petDict = childSnapshot.value as? [String: Any],
-                   let name = petDict["name"] as? String,
-                   let age = petDict["age"] as? Int,
-                   let weight = petDict["weight"] as? Double {
-                    resultText += "\(name), Age: \(age), Weight: \(weight)\n"
+        db.collection("pets").getDocuments { snapshot, error in
+            if let error = error {
+                print("Error getting documents: \(error)")
+            } else {
+                var resultText = ""
+                for document in snapshot!.documents {
+                    let petData = document.data()
+                    if let name = petData["name"] as? String,
+                       let age = petData["age"] as? Int,
+                       let weight = petData["weight"] as? Double {
+                        resultText += "\(name), Age: \(age), Weight: \(weight)\n"
+                    }
                 }
+                self.resultLabel.text = resultText
             }
-            self.resultLabel.text = resultText
-        })
+        }
     }
     
 }
